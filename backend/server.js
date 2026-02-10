@@ -19,7 +19,7 @@ connectDB();
 
 app.use(helmet()); 
 app.use(cors({
-    origin: process.env.FRONTEND_URL || 'expense-tracker-red-seven-55.vercel.app',
+    origin: process.env.FRONTEND_URL || 'https://expense-tracker-red-seven-55.vercel.app',
     credentials: true
 }));
 app.use(express.json()); 
