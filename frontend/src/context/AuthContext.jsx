@@ -17,7 +17,6 @@ export const AuthProvider = ({ children }) => {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
 
     useEffect(() => {
-    d
         const currentUser = authService.getCurrentUser();
         const token = localStorage.getItem('accessToken');
 
