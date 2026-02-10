@@ -17,7 +17,7 @@ const app = express();
 
 connectDB();
 
-app.use(helmet()); 
+app.use(helmet());
 app.use(cors({
     origin: [
         'http://localhost:5173',
@@ -26,15 +26,22 @@ app.use(cors({
     ].filter(Boolean),
     credentials: true
 }));
-app.use(express.json()); 
-app.use(express.urlencoded({ extended: true })); 
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-if (process.env.NODE_ENV === 'development') {
-    app.use((req, res, next) => {
-        console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
-        next();
+// Request logging
+app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+    next();
+});
+
+app.get('/', (req, res) => {
+    res.status(200).json({
+        success: true,
+        message: 'Expense Tracker API is running',
+        timestamp: new Date().toISOString()
     });
-}
+});
 
 app.get('/health', (req, res) => {
     res.status(200).json({
