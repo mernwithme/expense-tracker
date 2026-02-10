@@ -20,8 +20,8 @@ connectDB();
 app.use(helmet());
 app.use(cors({
     origin: [
-        'http://localhost:5173',
-        'https://expense-tracker-xhee3rmtm-mernwithmes-projects.vercel.app',
+        'https://expense-tracker-xhee3rmtm-mernwithmes-projects.vercel.app/',
+        'https://expense-tracker-red-seven-55.vercel.app/',
         process.env.FRONTEND_URL
     ].filter(Boolean),
     credentials: true
