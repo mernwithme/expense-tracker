@@ -90,7 +90,7 @@ const AddExpense = () => {
                 <div className="container-fluid px-3 px-sm-5 px-lg-8 py-3">
                     <div className="d-flex justify-content-between align-items-center flex-wrap gap-3">
                         <div>
-                            <h1 className="fs-2 fw-bold text-gray-900 mb-0">ExpenseIQ Pro</h1>
+                            <h1 className="fs-2 fw-bold text-gray-900 mb-0">ExpenseIQ</h1>
                             <p className="small text-gray-600 mb-0">Welcome, {user?.name}!</p>
                         </div>
                         <div className="d-flex gap-3">

@@ -34,7 +34,7 @@ export const generateGeminiContent = async (prompt, systemInstruction = '') => {
 export const analyzeSpendingWithGemini = async (userId, data) => {
     const { totalSpent, totalBudget, categoryTotals, monthlyTrend, topCategory } = data;
 
-    const systemPrompt = `You are ExpenseIQ Pro AI, a professional financial assistant.
+    const systemPrompt = `You are ExpenseIQ AI, a professional financial assistant.
 Analyze user transactions and budget data to provide actionable insights.
 Keep answers concise, clear, and structured in Markdown format.`;
 
@@ -86,7 +86,7 @@ Provide:
 export const processAIChat = async (userId, userQuery, contextData = {}) => {
     const { totalSpent = 0, totalBudget = 0, categoryTotals = [], monthlyTrend = [] } = contextData;
 
-    const systemInstruction = `You are ExpenseIQ Pro AI Assistant.
+    const systemInstruction = `You are ExpenseIQ AI Assistant.
 Respond accurately to user questions about their financial status, spending habits, savings, and expense predictions.
 User's Current Context:
 - Total Spent This Month: ₹${totalSpent}

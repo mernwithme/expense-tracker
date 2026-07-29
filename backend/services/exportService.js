@@ -91,7 +91,7 @@ export const generatePDF = (expenses, summary = {}, userName = 'User') => {
 
             // Header
             doc.fontSize(20).font('Helvetica-Bold')
-                .text('ExpenseIQ Pro - Financial Report', { align: 'center' });
+                .text('ExpenseIQ - Financial Report', { align: 'center' });
 
             doc.moveDown(0.5);
             doc.fontSize(12).font('Helvetica')

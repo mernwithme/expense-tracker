@@ -43,7 +43,7 @@ app.use((req, res, next) => {
 app.get('/', (req, res) => {
     res.status(200).json({
         success: true,
-        message: 'ExpenseIQ Pro API is running',
+        message: 'ExpenseIQ API is running',
         timestamp: new Date().toISOString()
     });
 });
