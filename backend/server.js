@@ -14,6 +14,7 @@ import ocrRoutes from './routes/ocrRoutes.js';
 import voiceRoutes from './routes/voiceRoutes.js';
 import reportRoutes from './routes/reportRoutes.js';
 import { initializeScheduler } from './services/monthlyReportScheduler.js';
+import { verifyTransporter } from './services/emailService.js';
 
 dotenv.config();
 
@@ -132,6 +133,9 @@ app.listen(PORT, () => {
     
     // Initialize scheduled tasks
     initializeScheduler();
+
+    // Verify SMTP connection pool on startup
+    verifyTransporter();
 });
 
 process.on('unhandledRejection', (err) => {

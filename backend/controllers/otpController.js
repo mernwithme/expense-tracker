@@ -15,27 +15,34 @@ const generateOtp = () => {
  * POST /api/auth/send-otp
  */
 export const sendOtp = async (req, res) => {
+    const totalTimer = `⏱️ Total_SendOtp_Request_${Date.now()}`;
+    console.time(totalTimer);
     try {
         const { email, name } = req.body;
+        const normalizedEmail = email.toLowerCase();
 
-        // Check if email is already registered
-        const existingUser = await User.findOne({ email: email.toLowerCase() });
+        // 1. Check existing user
+        console.time('⏱️ DB_UserCheck');
+        const existingUser = await User.findOne({ email: normalizedEmail });
+        console.timeEnd('⏱️ DB_UserCheck');
+
         if (existingUser) {
+            console.timeEnd(totalTimer);
             return res.status(400).json({
                 success: false,
                 message: 'This email is already registered.'
             });
         }
 
-        // Delete any previous OTP records for this email
-        await Otp.deleteMany({ email: email.toLowerCase() });
+        // 2. Delete previous OTP records
+        console.time('⏱️ DB_OtpDelete');
+        await Otp.deleteMany({ email: normalizedEmail });
+        console.timeEnd('⏱️ DB_OtpDelete');
 
-        // Generate new OTP
+        // 3. Generate and store new OTP
         const otp = generateOtp();
-
-        // Store OTP in database with 5-minute expiry
         const otpRecord = new Otp({
-            email: email.toLowerCase(),
+            email: normalizedEmail,
             otp,
             expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5 minutes
             verified: false,
@@ -43,18 +50,25 @@ export const sendOtp = async (req, res) => {
             lastSentAt: new Date()
         });
 
+        console.time('⏱️ DB_OtpSave');
         await otpRecord.save();
-        console.log(`📧 OTP generated for ${email}: ${otp}`);
+        console.timeEnd('⏱️ DB_OtpSave');
 
-        // Send OTP email
-        await sendOtpEmail(email, name, otp);
+        console.log(`📧 OTP generated & saved in DB for ${normalizedEmail}: ${otp}`);
 
+        // 4. Dispatch email in background (non-blocking for ultra-fast response)
+        sendOtpEmail(normalizedEmail, name, otp).catch(err => {
+            console.error(`❌ Background OTP email dispatch error for ${normalizedEmail}:`, err.message);
+        });
+
+        console.timeEnd(totalTimer);
         res.status(200).json({
             success: true,
             message: 'Verification code sent to your email.'
         });
 
     } catch (error) {
+        console.timeEnd(totalTimer);
         console.error('❌ Send OTP error:', error);
         res.status(500).json({
             success: false,
@@ -70,9 +84,11 @@ export const sendOtp = async (req, res) => {
 export const verifyOtp = async (req, res) => {
     try {
         const { email, otp } = req.body;
+        const normalizedEmail = email.toLowerCase();
 
-        // Find OTP record
-        const otpRecord = await Otp.findOne({ email: email.toLowerCase() });
+        console.time('⏱️ DB_OtpVerifyFetch');
+        const otpRecord = await Otp.findOne({ email: normalizedEmail });
+        console.timeEnd('⏱️ DB_OtpVerifyFetch');
 
         if (!otpRecord) {
             return res.status(400).json({
@@ -81,9 +97,7 @@ export const verifyOtp = async (req, res) => {
             });
         }
 
-        // Check if OTP has expired
         if (new Date() > otpRecord.expiresAt) {
-            // Delete expired OTP
             await Otp.deleteOne({ _id: otpRecord._id });
             return res.status(400).json({
                 success: false,
@@ -91,7 +105,6 @@ export const verifyOtp = async (req, res) => {
             });
         }
 
-        // Check if OTP matches
         if (otpRecord.otp !== otp) {
             return res.status(400).json({
                 success: false,
@@ -99,11 +112,10 @@ export const verifyOtp = async (req, res) => {
             });
         }
 
-        // Mark as verified
         otpRecord.verified = true;
         await otpRecord.save();
 
-        console.log(`✅ Email verified: ${email}`);
+        console.log(`✅ Email verified: ${normalizedEmail}`);
 
         res.status(200).json({
             success: true,
@@ -124,41 +136,47 @@ export const verifyOtp = async (req, res) => {
  * POST /api/auth/resend-otp
  */
 export const resendOtp = async (req, res) => {
+    const totalTimer = `⏱️ Total_ResendOtp_Request_${Date.now()}`;
+    console.time(totalTimer);
     try {
         const { email, name } = req.body;
+        const normalizedEmail = email.toLowerCase();
 
-        // Check if email is already registered
-        const existingUser = await User.findOne({ email: email.toLowerCase() });
+        console.time('⏱️ DB_ResendUserCheck');
+        const existingUser = await User.findOne({ email: normalizedEmail });
+        console.timeEnd('⏱️ DB_ResendUserCheck');
+
         if (existingUser) {
+            console.timeEnd(totalTimer);
             return res.status(400).json({
                 success: false,
                 message: 'This email is already registered.'
             });
         }
 
-        // Find existing OTP record
-        const otpRecord = await Otp.findOne({ email: email.toLowerCase() });
+        const otpRecord = await Otp.findOne({ email: normalizedEmail });
 
         if (!otpRecord) {
+            console.timeEnd(totalTimer);
             return res.status(400).json({
                 success: false,
                 message: 'No verification request found. Please start the registration process again.'
             });
         }
 
-        // Check maximum resend attempts (3 total including initial send)
         if (otpRecord.attempts >= 3) {
+            console.timeEnd(totalTimer);
             return res.status(429).json({
                 success: false,
                 message: 'Maximum resend attempts reached. Please try again later.'
             });
         }
 
-        // Check 60-second cooldown
         const timeSinceLastSend = Date.now() - new Date(otpRecord.lastSentAt).getTime();
-        const cooldownMs = 60 * 1000; // 60 seconds
+        const cooldownMs = 60 * 1000;
         if (timeSinceLastSend < cooldownMs) {
             const remainingSeconds = Math.ceil((cooldownMs - timeSinceLastSend) / 1000);
+            console.timeEnd(totalTimer);
             return res.status(429).json({
                 success: false,
                 message: `Please wait ${remainingSeconds} seconds before requesting a new code.`,
@@ -166,22 +184,25 @@ export const resendOtp = async (req, res) => {
             });
         }
 
-        // Generate new OTP
         const newOtp = generateOtp();
 
-        // Update the record with new OTP
         otpRecord.otp = newOtp;
         otpRecord.expiresAt = new Date(Date.now() + 5 * 60 * 1000);
         otpRecord.attempts += 1;
         otpRecord.lastSentAt = new Date();
         otpRecord.verified = false;
 
+        console.time('⏱️ DB_ResendOtpSave');
         await otpRecord.save();
-        console.log(`📧 OTP resent for ${email}: ${newOtp} (attempt ${otpRecord.attempts})`);
+        console.timeEnd('⏱️ DB_ResendOtpSave');
 
-        // Send new OTP email
-        await sendOtpEmail(email, name || '', newOtp);
+        console.log(`📧 OTP resent for ${normalizedEmail}: ${newOtp} (attempt ${otpRecord.attempts})`);
 
+        sendOtpEmail(normalizedEmail, name || '', newOtp).catch(err => {
+            console.error(`❌ Background resend OTP email error for ${normalizedEmail}:`, err.message);
+        });
+
+        console.timeEnd(totalTimer);
         res.status(200).json({
             success: true,
             message: 'New verification code sent to your email.',
@@ -189,6 +210,7 @@ export const resendOtp = async (req, res) => {
         });
 
     } catch (error) {
+        console.timeEnd(totalTimer);
         console.error('❌ Resend OTP error:', error);
         res.status(500).json({
             success: false,

@@ -1,18 +1,52 @@
 import nodemailer from 'nodemailer';
 
+let transporterInstance = null;
+
 /**
- * Create Nodemailer transporter from environment variables
+ * Get or create singleton Nodemailer pooled transporter
  */
-const createTransporter = () => {
-    return nodemailer.createTransport({
-        host: process.env.SMTP_HOST || 'smtp.gmail.com',
-        port: parseInt(process.env.SMTP_PORT) || 587,
-        secure: false, // true for 465, false for other ports
-        auth: {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASS
-        }
-    });
+const getTransporter = () => {
+    if (!transporterInstance) {
+        const port = parseInt(process.env.SMTP_PORT) || 587;
+        const isSecure = port === 465;
+
+        transporterInstance = nodemailer.createTransport({
+            pool: true,
+            maxConnections: 5,
+            maxMessages: 100,
+            rateDelta: 1000,
+            rateLimit: 5,
+            host: process.env.SMTP_HOST || 'smtp.gmail.com',
+            port: port,
+            secure: isSecure,
+            auth: {
+                user: process.env.SMTP_USER,
+                pass: process.env.SMTP_PASS
+            },
+            connectionTimeout: 10000, // 10s TCP timeout
+            greetingTimeout: 5000,    // 5s SMTP greeting timeout
+            socketTimeout: 15000,     // 15s socket timeout
+            keepAlive: true
+        });
+    }
+    return transporterInstance;
+};
+
+/**
+ * Verify transporter connection on startup (pre-warms SMTP socket pool)
+ */
+export const verifyTransporter = async () => {
+    try {
+        console.time('⚡ SMTP_Transporter_Verification');
+        const transporter = getTransporter();
+        await transporter.verify();
+        console.timeEnd('⚡ SMTP_Transporter_Verification');
+        console.log('✅ SMTP Transporter connected & verified successfully (Pool active)');
+        return true;
+    } catch (error) {
+        console.error('⚠️ SMTP Transporter verification failed:', error.message);
+        return false;
+    }
 };
 
 /**
@@ -106,8 +140,10 @@ const generateOtpEmailHtml = (name, otp) => {
  * Send OTP verification email
  */
 export const sendOtpEmail = async (email, name, otp) => {
+    const timerKey = `⏱️ SMTP_SendOtpEmail_${email}_${Date.now()}`;
+    console.time(timerKey);
     try {
-        const transporter = createTransporter();
+        const transporter = getTransporter();
 
         const mailOptions = {
             from: process.env.SMTP_FROM || `"ExpenseIQ" <${process.env.SMTP_USER}>`,
@@ -117,9 +153,11 @@ export const sendOtpEmail = async (email, name, otp) => {
         };
 
         const info = await transporter.sendMail(mailOptions);
+        console.timeEnd(timerKey);
         console.log('✅ OTP email sent successfully:', info.messageId);
         return { success: true, messageId: info.messageId };
     } catch (error) {
+        console.timeEnd(timerKey);
         console.error('❌ Failed to send OTP email:', error.message);
         throw new Error('Failed to send verification email. Please try again later.');
     }
@@ -135,7 +173,7 @@ export const sendMonthlyStatementEmail = async (email, name, month, year, pdfBuf
 
     while (retries > 0) {
         try {
-            const transporter = createTransporter();
+            const transporter = getTransporter();
 
             const html = `
             <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 8px;">
@@ -175,7 +213,6 @@ export const sendMonthlyStatementEmail = async (email, name, month, year, pdfBuf
             if (retries === 0) {
                 throw new Error('Failed to send monthly statement email after 3 attempts.');
             }
-            // Wait 5 seconds before retrying
             await new Promise(res => setTimeout(res, 5000));
         }
     }
@@ -183,5 +220,6 @@ export const sendMonthlyStatementEmail = async (email, name, month, year, pdfBuf
 
 export default {
     sendOtpEmail,
-    sendMonthlyStatementEmail
+    sendMonthlyStatementEmail,
+    verifyTransporter
 };
