@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import expenseService from '../services/expenseService';
 
 const CATEGORIES = ['All', 'Food', 'Travel', 'Rent', 'Shopping', 'Entertainment', 'Healthcare', 'Bills', 'Education', 'Others'];
@@ -10,11 +10,7 @@ const TransactionHistoryCard = () => {
     const [selectedCategory, setSelectedCategory] = useState('All');
     const [deletingId, setDeletingId] = useState(null);
 
-    useEffect(() => {
-        fetchExpenses();
-    }, [selectedCategory]);
-
-    const fetchExpenses = async () => {
+    const fetchExpenses = useCallback(async () => {
         try {
             setLoading(true);
             const params = {};
@@ -26,7 +22,11 @@ const TransactionHistoryCard = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [selectedCategory]);
+
+    useEffect(() => {
+        fetchExpenses();
+    }, [fetchExpenses]);
 
     const handleDelete = async (id) => {
         if (!window.confirm('Are you sure you want to delete this expense record?')) return;
@@ -35,6 +35,7 @@ const TransactionHistoryCard = () => {
             await expenseService.deleteExpense(id);
             setExpenses(expenses.filter(e => e._id !== id));
         } catch (err) {
+            console.error('Failed to delete expense record:', err);
             alert('Failed to delete expense record.');
         } finally {
             setDeletingId(null);

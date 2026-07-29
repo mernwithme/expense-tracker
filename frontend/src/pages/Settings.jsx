@@ -7,7 +7,7 @@ import ErrorMessage from '../components/Common/ErrorMessage';
 import Footer from '../components/Common/Footer';
 
 const Settings = () => {
-    const { user, logout } = useAuth();
+    const { user } = useAuth();
     const [preferences, setPreferences] = useState({
         monthlyReport: true,
         budgetAlerts: true,
@@ -110,7 +110,7 @@ const Settings = () => {
                             </Link>
                             <div>
                                 <h1 className="fs-3 fw-bold text-gray-900 mb-0">Settings</h1>
-                                <p className="small text-gray-500 mb-0">Manage your preferences</p>
+                                <p className="small text-gray-500 mb-0">Manage preferences for {user?.email || 'your account'}</p>
                             </div>
                         </div>
                     </div>

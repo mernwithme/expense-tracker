@@ -200,8 +200,9 @@ const Register = () => {
         }
 
         try {
-            const { confirmPassword, ...userData } = formData;
-            console.log('Attempting registration with:', { name: userData.name, email: userData.email });
+            const { name, email, password } = formData;
+            const userData = { name, email, password };
+            console.log('Attempting registration with:', { name, email });
             const response = await register(userData);
             console.log('Registration successful:', response);
             navigate('/dashboard');

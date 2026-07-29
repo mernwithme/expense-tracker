@@ -22,13 +22,29 @@ const app = express();
 connectDB();
 
 app.use(helmet());
+const staticOrigins = [
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'http://localhost:5175',
+    'https://expense-tracker-xhee3rmtm-mernwithmes-projects.vercel.app',
+    'https://expense-tracker-red-seven-55.vercel.app'
+];
+
+const envOrigins = process.env.FRONTEND_URL
+    ? process.env.FRONTEND_URL.split(',').map(url => url.trim())
+    : [];
+
+const allowedOrigins = [...staticOrigins, ...envOrigins].filter(Boolean);
+
 app.use(cors({
-    origin: [
-        'http://localhost:5173',
-        'https://expense-tracker-xhee3rmtm-mernwithmes-projects.vercel.app',
-        'https://expense-tracker-red-seven-55.vercel.app',
-        process.env.FRONTEND_URL
-    ].filter(Boolean),
+    origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.includes(origin)) return callback(null, true);
+        if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return callback(null, true);
+        if (/^https:\/\/.*\.vercel\.app$/.test(origin)) return callback(null, true);
+        if (/^https:\/\/.*\.onrender\.com$/.test(origin) || /^https:\/\/.*\.render\.com$/.test(origin)) return callback(null, true);
+        return callback(null, false);
+    },
     credentials: true
 }));
 app.use(express.json());

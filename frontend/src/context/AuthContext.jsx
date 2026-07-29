@@ -1,8 +1,9 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState } from 'react';
 import { authService } from '../services/authService';
 
 const AuthContext = createContext(null);
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => {
     const context = useContext(AuthContext);
     if (!context) {
@@ -12,46 +13,30 @@ export const useAuth = () => {
 };
 
 export const AuthProvider = ({ children }) => {
-    const [user, setUser] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
-
-    useEffect(() => {
-        const currentUser = authService.getCurrentUser();
+    const [user, setUser] = useState(() => authService.getCurrentUser());
+    const [isAuthenticated, setIsAuthenticated] = useState(() => {
         const token = localStorage.getItem('accessToken');
-
-        if (currentUser && token) {
-            setUser(currentUser);
-            setIsAuthenticated(true);
-        }
-
-        setLoading(false);
-    }, []);
+        const currentUser = authService.getCurrentUser();
+        return !!(currentUser && token);
+    });
+    const [loading] = useState(false);
 
     const login = async (credentials) => {
-        try {
-            const response = await authService.login(credentials);
-            if (response.success) {
-                setUser(response.data.user);
-                setIsAuthenticated(true);
-            }
-            return response;
-        } catch (error) {
-            throw error;
+        const response = await authService.login(credentials);
+        if (response.success) {
+            setUser(response.data.user);
+            setIsAuthenticated(true);
         }
+        return response;
     };
 
     const register = async (userData) => {
-        try {
-            const response = await authService.register(userData);
-            if (response.success) {
-                setUser(response.data.user);
-                setIsAuthenticated(true);
-            }
-            return response;
-        } catch (error) {
-            throw error;
+        const response = await authService.register(userData);
+        if (response.success) {
+            setUser(response.data.user);
+            setIsAuthenticated(true);
         }
+        return response;
     };
 
     const logout = async () => {

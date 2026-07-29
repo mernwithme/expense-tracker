@@ -56,7 +56,7 @@ const Dashboard = () => {
                 if (cached.success && cached.data.insights.length > 0) {
                     setAiInsightSummary(cached.data.insights[0].response);
                 }
-            } catch (e) {
+            } catch {
                 // Ignore silent AI cache error
             }
         } catch (err) {
