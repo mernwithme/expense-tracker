@@ -129,12 +129,22 @@ export const getCurrentMonthBudgets = async (req, res) => {
                 ? Math.round((actual / budget.monthlyLimit) * 100)
                 : 0;
 
+            let statusColor = 'green';
+            if (percentageUsed > 100) statusColor = 'red';
+            else if (percentageUsed >= 90) statusColor = 'orange';
+            else if (percentageUsed >= 60) statusColor = 'yellow';
+
             return {
+                _id: budget._id,
                 category: budget.category,
                 monthlyLimit: budget.monthlyLimit,
+                actualSpending: Math.round(actual * 100) / 100,
                 actual: Math.round(actual * 100) / 100,
                 remaining: Math.round(remaining * 100) / 100,
                 percentageUsed,
+                statusColor,
+                isWarning: percentageUsed >= 90,
+                isOverBudget: actual > budget.monthlyLimit,
                 isOverspent: actual > budget.monthlyLimit,
                 month: budget.month
             };

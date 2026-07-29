@@ -28,6 +28,15 @@ const userSchema = new mongoose.Schema({
         type: String,
         select: false
     },
+    emailVerified: {
+        type: Boolean,
+        default: false
+    },
+    emailPreferences: {
+        monthlyReport: { type: Boolean, default: true },
+        budgetAlerts: { type: Boolean, default: true },
+        aiInsights: { type: Boolean, default: true }
+    },
     createdAt: {
         type: Date,
         default: Date.now

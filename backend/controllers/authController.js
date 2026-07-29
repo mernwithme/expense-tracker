@@ -1,4 +1,5 @@
 import User from '../models/User.js';
+import Otp from '../models/Otp.js';
 
 /**
  * Register a new user
@@ -18,14 +19,28 @@ export const register = async (req, res) => {
             });
         }
 
-        // Create new user (password will be hashed by pre-save hook)
+        // Check if email has been verified via OTP
+        const otpRecord = await Otp.findOne({ email: email.toLowerCase(), verified: true });
+        if (!otpRecord) {
+            return res.status(400).json({
+                success: false,
+                message: 'Email not verified. Please verify your email first.'
+            });
+        }
+
+        // Create new user with emailVerified = true (password will be hashed by pre-save hook)
         const user = new User({
             name,
             email,
-            password
+            password,
+            emailVerified: true
         });
 
         await user.save();
+
+        // Clean up OTP record after successful registration
+        await Otp.deleteMany({ email: email.toLowerCase() });
+
         console.log('✅ User created successfully:', email);
 
         // Generate tokens

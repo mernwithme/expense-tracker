@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import AIInsight from '../models/AIInsight.js';
+import AIHistory from '../models/AIHistory.js';
 import {
     getCategoryWiseTotals,
     getMonthlyTrend,
@@ -12,6 +13,7 @@ import {
     generateSavingTips,
     predictOverspendingRisk
 } from '../services/aiService.js';
+import geminiService from '../services/geminiService.js';
 
 /**
  * Generate comprehensive AI insights
@@ -21,7 +23,6 @@ export const generateInsights = async (req, res) => {
         const userId = mongoose.Types.ObjectId.createFromHexString(req.user.userId);
         const { forceRefresh = false } = req.query;
 
-        // Check for cached insights (if not forcing refresh)
         if (!forceRefresh) {
             const cachedInsight = await AIInsight.findRecentInsight(userId, 'spending_analysis', 24);
 
@@ -38,13 +39,11 @@ export const generateInsights = async (req, res) => {
             }
         }
 
-        // Get current month
         const now = new Date();
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
         const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-        // Gather all necessary data using aggregations
         const [
             categoryTotals,
             monthlyTrend,
@@ -72,7 +71,6 @@ export const generateInsights = async (req, res) => {
             ])
         ]);
 
-        // Calculate budget status
         const spendingMap = {};
         actualSpending.forEach(item => {
             spendingMap[item._id] = item.actual;
@@ -92,7 +90,6 @@ export const generateInsights = async (req, res) => {
             };
         });
 
-        // Calculate total metrics
         const totalMonthlyBudget = budgets.reduce((sum, b) => sum + b.monthlyLimit, 0);
         const totalSpentThisMonth = actualSpending.reduce((sum, item) => sum + item.actual, 0);
 
@@ -105,7 +102,6 @@ export const generateInsights = async (req, res) => {
             remainingAmount = totalMonthlyBudget - totalSpentThisMonth;
         }
 
-        // Get top categories details
         const sortedCategories = [...categoryTotals].sort((a, b) => b.total - a.total);
         const topCategory = sortedCategories.length > 0 ? sortedCategories[0] : { category: 'None', total: 0 };
         const secondCategory = sortedCategories.length > 1 ? sortedCategories[1] : { category: 'None', total: 0 };
@@ -114,7 +110,6 @@ export const generateInsights = async (req, res) => {
             ? Math.round((topCategory.total / totalSpentThisMonth) * 100)
             : 0;
 
-        // Prepare data snapshot for AI
         const dataSnapshot = {
             budget: totalMonthlyBudget,
             totalSpent: totalSpentThisMonth,
@@ -132,16 +127,20 @@ export const generateInsights = async (req, res) => {
             month: currentMonth
         };
 
-        // Generate AI insights
-        const aiResponse = await generateSpendingInsights(dataSnapshot);
+        const aiResponse = await geminiService.analyzeSpendingWithGemini(userId, {
+            totalSpent: totalSpentThisMonth,
+            totalBudget: totalMonthlyBudget,
+            categoryTotals,
+            monthlyTrend,
+            topCategory: topCategory.category
+        }) || await generateSpendingInsights(dataSnapshot);
 
-        // Cache the AI response
         const insight = new AIInsight({
             userId,
             insightType: 'spending_analysis',
             dataSnapshot,
             response: aiResponse,
-            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
         });
 
         await insight.save();
@@ -178,7 +177,6 @@ export const getSavingTips = async (req, res) => {
     try {
         const userId = mongoose.Types.ObjectId.createFromHexString(req.user.userId);
 
-        // Check cache
         const cachedTips = await AIInsight.findRecentInsight(userId, 'budget_optimization', 48);
 
         if (cachedTips) {
@@ -191,7 +189,6 @@ export const getSavingTips = async (req, res) => {
             });
         }
 
-        // Get current month data
         const now = new Date();
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
@@ -216,7 +213,6 @@ export const getSavingTips = async (req, res) => {
             ])
         ]);
 
-        // Calculate budget status
         const spendingMap = {};
         actualSpending.forEach(item => {
             spendingMap[item._id] = item.actual;
@@ -228,16 +224,14 @@ export const getSavingTips = async (req, res) => {
             actual: spendingMap[budget.category] || 0
         }));
 
-        // Generate tips
         const tips = await generateSavingTips(categoryTotals, budgetStatus);
 
-        // Cache the tips
         const insight = new AIInsight({
             userId,
             insightType: 'budget_optimization',
             dataSnapshot: { categoryTotals, budgetStatus },
             response: tips,
-            expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000) // 48 hours
+            expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000)
         });
 
         await insight.save();
@@ -267,7 +261,6 @@ export const predictRisk = async (req, res) => {
     try {
         const userId = mongoose.Types.ObjectId.createFromHexString(req.user.userId);
 
-        // Get data
         const now = new Date();
         const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -292,7 +285,6 @@ export const predictRisk = async (req, res) => {
             Budget.find({ userId, month: currentMonth })
         ]);
 
-        // Generate prediction
         const prediction = await predictOverspendingRisk(monthlyTrend, currentSpending, budgets);
 
         res.status(200).json({
@@ -311,8 +303,87 @@ export const predictRisk = async (req, res) => {
 };
 
 /**
- * Get all cached insights for user
+ * Interactive AI Chat Endpoint (Gemini API)
  */
+export const handleAIChat = async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        const { query } = req.body;
+
+        if (!query || typeof query !== 'string' || !query.trim()) {
+            return res.status(400).json({
+                success: false,
+                message: 'Query string is required'
+            });
+        }
+
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+        const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+        const [categoryTotals, monthlyTrend, budgets, actualSpending] = await Promise.all([
+            getCategoryWiseTotals(userId, startOfMonth, endOfMonth),
+            getMonthlyTrend(userId, 6),
+            Budget.find({ userId, month: currentMonth }),
+            Expense.aggregate([
+                { $match: { userId: new mongoose.Types.ObjectId(userId), date: { $gte: startOfMonth, $lte: endOfMonth } } },
+                { $group: { _id: null, totalSpent: { $sum: '$amount' } } }
+            ])
+        ]);
+
+        const totalSpent = actualSpending[0]?.totalSpent || 0;
+        const totalBudget = budgets.reduce((acc, b) => acc + b.monthlyLimit, 0);
+
+        const aiResponseText = await geminiService.processAIChat(userId, query.trim(), {
+            totalSpent,
+            totalBudget,
+            categoryTotals,
+            monthlyTrend
+        });
+
+        res.status(200).json({
+            success: true,
+            data: {
+                prompt: query,
+                response: aiResponseText,
+                createdAt: new Date()
+            }
+        });
+    } catch (error) {
+        console.error('AI Chat Error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'AI Assistant failed to process query',
+            error: error.message
+        });
+    }
+};
+
+/**
+ * Get AI Chat History
+ */
+export const getAIChatHistory = async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        const history = await AIHistory.find({ userId })
+            .sort({ createdAt: -1 })
+            .limit(30);
+
+        res.status(200).json({
+            success: true,
+            data: { history }
+        });
+    } catch (error) {
+        console.error('Get AI History Error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to retrieve AI history',
+            error: error.message
+        });
+    }
+};
+
 export const getCachedInsights = async (req, res) => {
     try {
         const userId = req.user.userId;

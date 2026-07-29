@@ -100,3 +100,48 @@ export const budgetValidation = [
         .notEmpty().withMessage('Month is required')
         .matches(/^\d{4}-(0[1-9]|1[0-2])$/).withMessage('Month must be in YYYY-MM format')
 ];
+
+/**
+ * Validation rules for sending OTP
+ */
+export const sendOtpValidation = [
+    body('email')
+        .trim()
+        .notEmpty().withMessage('Email is required')
+        .isEmail().withMessage('Please provide a valid email')
+        .normalizeEmail(),
+
+    body('name')
+        .trim()
+        .notEmpty().withMessage('Name is required')
+        .isLength({ min: 2, max: 50 }).withMessage('Name must be between 2 and 50 characters')
+];
+
+/**
+ * Validation rules for verifying OTP
+ */
+export const verifyOtpValidation = [
+    body('email')
+        .trim()
+        .notEmpty().withMessage('Email is required')
+        .isEmail().withMessage('Please provide a valid email')
+        .normalizeEmail(),
+
+    body('otp')
+        .trim()
+        .notEmpty().withMessage('Verification code is required')
+        .isLength({ min: 6, max: 6 }).withMessage('Verification code must be 6 digits')
+        .isNumeric().withMessage('Verification code must contain only numbers')
+];
+
+/**
+ * Validation rules for resending OTP
+ */
+export const resendOtpValidation = [
+    body('email')
+        .trim()
+        .notEmpty().withMessage('Email is required')
+        .isEmail().withMessage('Please provide a valid email')
+        .normalizeEmail()
+];
+

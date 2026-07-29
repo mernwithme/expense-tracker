@@ -1,32 +1,31 @@
 import PDFDocument from 'pdfkit';
 import { Parser } from 'json2csv';
+import XLSX from 'xlsx';
 
 /**
  * Generate CSV from expenses array
  */
 export const generateCSV = (expenses, summary = {}) => {
     try {
-        // Define fields for CSV
         const fields = [
             { label: 'Date', value: 'date' },
             { label: 'Category', value: 'category' },
             { label: 'Amount', value: 'amount' },
-            { label: 'Description', value: 'description' }
+            { label: 'Description', value: 'description' },
+            { label: 'Type', value: 'type' }
         ];
 
-        // Format expenses data
         const formattedExpenses = expenses.map(expense => ({
             date: new Date(expense.date).toLocaleDateString('en-IN'),
             category: expense.category,
             amount: `₹${expense.amount.toFixed(2)}`,
-            description: expense.description
+            description: expense.description,
+            type: expense.type || 'Expense'
         }));
 
-        // Create CSV parser
         const parser = new Parser({ fields });
         let csv = parser.parse(formattedExpenses);
 
-        // Add summary section if provided
         if (summary.total) {
             csv += '\n\n--- SUMMARY ---\n';
             csv += `Total Expenses,₹${summary.total.toFixed(2)}\n`;
@@ -45,6 +44,39 @@ export const generateCSV = (expenses, summary = {}) => {
 };
 
 /**
+ * Generate Excel buffer from expenses array
+ */
+export const generateExcel = (expenses, summary = {}) => {
+    try {
+        const data = expenses.map(expense => ({
+            Date: new Date(expense.date).toLocaleDateString('en-IN'),
+            Category: expense.category,
+            Amount: expense.amount,
+            Description: expense.description,
+            Type: expense.type || 'Expense'
+        }));
+
+        if (summary.total) {
+            data.push({});
+            data.push({
+                Category: '--- SUMMARY ---',
+                Amount: `Total: ₹${summary.total.toFixed(2)}`,
+                Description: `Count: ${summary.count}`
+            });
+        }
+
+        const worksheet = XLSX.utils.json_to_sheet(data);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Expenses');
+
+        return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    } catch (error) {
+        console.error('Excel generation error:', error);
+        throw new Error('Failed to generate Excel file');
+    }
+};
+
+/**
  * Generate PDF from expenses array
  */
 export const generatePDF = (expenses, summary = {}, userName = 'User') => {
@@ -53,14 +85,13 @@ export const generatePDF = (expenses, summary = {}, userName = 'User') => {
             const doc = new PDFDocument({ margin: 50 });
             const chunks = [];
 
-            // Collect PDF chunks
             doc.on('data', chunk => chunks.push(chunk));
             doc.on('end', () => resolve(Buffer.concat(chunks)));
             doc.on('error', reject);
 
             // Header
             doc.fontSize(20).font('Helvetica-Bold')
-                .text('Expense Report', { align: 'center' });
+                .text('ExpenseIQ Pro - Financial Report', { align: 'center' });
 
             doc.moveDown(0.5);
             doc.fontSize(12).font('Helvetica')
@@ -72,7 +103,7 @@ export const generatePDF = (expenses, summary = {}, userName = 'User') => {
             doc.moveDown(1);
 
             // Summary section
-            if (summary.total) {
+            if (summary.total !== undefined) {
                 doc.fontSize(16).font('Helvetica-Bold')
                     .text('Summary', { underline: true });
                 doc.moveDown(0.5);
@@ -99,7 +130,6 @@ export const generatePDF = (expenses, summary = {}, userName = 'User') => {
                 .text('Expense Details', { underline: true });
             doc.moveDown(0.5);
 
-            // Table header
             const tableTop = doc.y;
             const col1X = 50;
             const col2X = 150;
@@ -116,13 +146,11 @@ export const generatePDF = (expenses, summary = {}, userName = 'User') => {
             doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke();
             doc.moveDown(0.3);
 
-            // Table rows
             doc.font('Helvetica').fontSize(9);
 
             expenses.forEach((expense, index) => {
                 const y = doc.y;
 
-                // Check if we need a new page
                 if (y > 700) {
                     doc.addPage();
                     doc.y = 50;
@@ -135,14 +163,12 @@ export const generatePDF = (expenses, summary = {}, userName = 'User') => {
 
                 doc.moveDown(0.8);
 
-                // Add separator line every 5 rows
                 if ((index + 1) % 5 === 0) {
                     doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke();
                     doc.moveDown(0.3);
                 }
             });
 
-            // Footer
             const pageCount = doc.bufferedPageRange();
             for (let i = 0; i < pageCount.count; i++) {
                 doc.switchToPage(i);
@@ -166,5 +192,6 @@ export const generatePDF = (expenses, summary = {}, userName = 'User') => {
 
 export default {
     generateCSV,
+    generateExcel,
     generatePDF
 };

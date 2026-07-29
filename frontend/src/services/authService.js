@@ -41,6 +41,22 @@ export const authService = {
         return response.data;
     },
 
+    // OTP Verification Methods
+    async sendOtp(email, name) {
+        const response = await api.post('/auth/send-otp', { email, name });
+        return response.data;
+    },
+
+    async verifyOtp(email, otp) {
+        const response = await api.post('/auth/verify-otp', { email, otp });
+        return response.data;
+    },
+
+    async resendOtp(email, name) {
+        const response = await api.post('/auth/resend-otp', { email, name });
+        return response.data;
+    },
+
     isAuthenticated() {
         return !!localStorage.getItem('accessToken');
     },

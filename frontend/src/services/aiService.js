@@ -20,6 +20,16 @@ export const aiService = {
         const response = await api.get('/ai/cached');
         return response.data;
     },
+
+    async sendChatMessage(query) {
+        const response = await api.post('/ai/chat', { query });
+        return response.data;
+    },
+
+    async getChatHistory() {
+        const response = await api.get('/ai/chat/history');
+        return response.data;
+    }
 };
 
 export default aiService;

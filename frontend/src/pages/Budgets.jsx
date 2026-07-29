@@ -26,7 +26,8 @@ const Budgets = () => {
     const fetchBudgets = async () => {
         try {
             const response = await budgetService.getCurrentMonthBudgets();
-            setBudgets(response.data || []);
+            const extractedBudgets = response.data?.budgets || (Array.isArray(response.data) ? response.data : []);
+            setBudgets(extractedBudgets);
         } catch (err) {
             console.error('Failed to fetch budgets:', err);
         }
@@ -64,14 +65,22 @@ const Budgets = () => {
         navigate('/login');
     };
 
+    const getProgressStyle = (pct) => {
+        if (pct > 100) return { bg: 'bg-danger', text: 'text-danger', label: 'Over Budget (>100%)', badge: 'bg-danger text-white' };
+        if (pct >= 90) return { bg: 'bg-warning text-dark', text: 'text-warning', label: 'Critical Warning (90-100%)', badge: 'bg-warning text-dark' };
+        if (pct >= 60) return { bg: 'bg-warning bg-opacity-75', text: 'text-warning', label: 'Caution (60-90%)', badge: 'bg-info text-dark' };
+        return { bg: 'bg-success', text: 'text-success', label: 'Safe (0-60%)', badge: 'bg-success text-white' };
+    };
+
+    const warningBudgets = budgets.filter(b => (b.percentageUsed || 0) >= 90);
+
     return (
         <div className="min-vh-100 bg-gradient-light d-flex flex-column">
-        
             <header className="bg-white shadow-sm">
                 <div className="container-fluid px-3 px-sm-5 px-lg-8 py-3">
                     <div className="d-flex justify-content-between align-items-center flex-wrap gap-3">
                         <div>
-                            <h1 className="fs-2 fw-bold text-gray-900 mb-0">Expense Tracker</h1>
+                            <h1 className="fs-2 fw-bold text-gray-900 mb-0">ExpenseIQ Pro</h1>
                             <p className="small text-gray-600 mb-0">Welcome, {user?.name}!</p>
                         </div>
                         <div className="d-flex gap-3">
@@ -93,8 +102,21 @@ const Budgets = () => {
             </header>
 
             <main className="container-fluid px-3 px-sm-5 px-lg-8 py-4 flex-grow-1" style={{ maxWidth: '72rem' }}>
+
+                {/* 90% Exceeded Warning Banner */}
+                {warningBudgets.length > 0 && (
+                    <div className="alert alert-warning border border-warning shadow-sm mb-4 d-flex align-items-center gap-2" role="alert">
+                        <span className="fs-4">⚠️</span>
+                        <div>
+                            <h6 className="fw-bold mb-0">Budget Alert Notification</h6>
+                            <p className="mb-0 small">
+                                {warningBudgets.length} category budget(s) have reached or exceeded 90% of your allocated limit!
+                            </p>
+                        </div>
+                    </div>
+                )}
+
                 <div className="row g-4">
-                
                     <div className="col-12 col-lg-6">
                         <div className="bg-white rounded-3 shadow p-4 p-md-5">
                             <h2 className="fs-3 fw-bold text-gray-900 mb-4">Set Monthly Budget</h2>
@@ -175,45 +197,46 @@ const Budgets = () => {
                             </form>
                         </div>
                     </div>
+
                     <div className="col-12 col-lg-6">
                         <div className="bg-white rounded-3 shadow p-4 p-md-5">
                             <h2 className="fs-3 fw-bold text-gray-900 mb-4">Current Month Budgets</h2>
 
                             {budgets.length > 0 ? (
                                 <div className="d-flex flex-column gap-3">
-                                    {budgets.map((budget) => (
-                                        <div key={budget._id} className="border border-gray-200 rounded-3 p-3">
-                                            <div className="d-flex justify-content-between align-items-start mb-2">
-                                                <h3 className="fs-5 fw-semibold text-gray-900 mb-0">{budget.category}</h3>
-                                                <span className={`badge ${budget.percentageUsed > 100 ? 'bg-danger' :
-                                                    budget.percentageUsed > 80 ? 'bg-warning' :
-                                                        'bg-success'
-                                                    }`}>
-                                                    {budget.percentageUsed}% used
-                                                </span>
-                                            </div>
-                                            <div className="mb-2">
-                                                <div className="d-flex justify-content-between small text-gray-600 mb-1">
-                                                    <span>₹{budget.actualSpending} / ₹{budget.monthlyLimit}</span>
-                                                    <span>₹{budget.remaining} remaining</span>
+                                    {budgets.map((budget) => {
+                                        const pct = budget.percentageUsed || 0;
+                                        const style = getProgressStyle(pct);
+                                        const spent = budget.actualSpending !== undefined ? budget.actualSpending : budget.actual || 0;
+
+                                        return (
+                                            <div key={budget._id || budget.category} className="border border-gray-200 rounded-3 p-3">
+                                                <div className="d-flex justify-content-between align-items-start mb-2">
+                                                    <h3 className="fs-5 fw-semibold text-gray-900 mb-0">{budget.category}</h3>
+                                                    <span className={`badge ${style.badge}`}>
+                                                        {pct}% used
+                                                    </span>
                                                 </div>
-                                                <div className="bg-secondary bg-opacity-25 rounded-pill" style={{ height: '0.5rem' }}>
-                                                    <div
-                                                        className={`rounded-pill ${budget.percentageUsed > 100 ? 'bg-danger' :
-                                                            budget.percentageUsed > 80 ? 'bg-warning' :
-                                                                'bg-primary'
-                                                            }`}
-                                                        style={{ width: `${Math.min(budget.percentageUsed, 100)}%`, height: '100%' }}
-                                                    ></div>
+                                                <div className="mb-2">
+                                                    <div className="d-flex justify-content-between small text-gray-600 mb-1">
+                                                        <span>₹{spent} / ₹{budget.monthlyLimit}</span>
+                                                        <span>₹{budget.remaining} remaining</span>
+                                                    </div>
+                                                    <div className="bg-secondary bg-opacity-25 rounded-pill" style={{ height: '0.6rem' }}>
+                                                        <div
+                                                            className={`rounded-pill ${style.bg}`}
+                                                            style={{ width: `${Math.min(pct, 100)}%`, height: '100%' }}
+                                                        ></div>
+                                                    </div>
                                                 </div>
+                                                {pct >= 90 && (
+                                                    <p className="small text-danger fw-semibold mb-0 mt-2">
+                                                        ⚠️ Budget warning! You've used {pct}% of your limit.
+                                                    </p>
+                                                )}
                                             </div>
-                                            {budget.isOverBudget && (
-                                                <p className="small text-danger mb-0 mt-2">
-                                                    ⚠️ Over budget by ₹{Math.abs(budget.remaining)}
-                                                </p>
-                                            )}
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             ) : (
                                 <div className="text-center py-5">
@@ -229,7 +252,6 @@ const Budgets = () => {
                 </div>
             </main>
 
-            {/* Footer */}
             <Footer />
         </div>
     );

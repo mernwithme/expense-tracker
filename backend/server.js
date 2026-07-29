@@ -10,6 +10,10 @@ import budgetRoutes from './routes/budgetRoutes.js';
 import analyticsRoutes from './routes/analyticsRoutes.js';
 import aiRoutes from './routes/aiRoutes.js';
 import exportRoutes from './routes/exportRoutes.js';
+import ocrRoutes from './routes/ocrRoutes.js';
+import voiceRoutes from './routes/voiceRoutes.js';
+import reportRoutes from './routes/reportRoutes.js';
+import { initializeScheduler } from './services/monthlyReportScheduler.js';
 
 dotenv.config();
 
@@ -39,7 +43,7 @@ app.use((req, res, next) => {
 app.get('/', (req, res) => {
     res.status(200).json({
         success: true,
-        message: 'Expense Tracker API is running',
+        message: 'ExpenseIQ Pro API is running',
         timestamp: new Date().toISOString()
     });
 });
@@ -54,10 +58,15 @@ app.get('/health', (req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/expenses', expenseRoutes);
+app.use('/api/expenses/ocr', ocrRoutes);
+app.use('/api/expenses/voice', voiceRoutes);
+app.use('/api/ocr', ocrRoutes);
+app.use('/api/voice', voiceRoutes);
 app.use('/api/budgets', budgetRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/export', exportRoutes);
+app.use('/api/reports', reportRoutes);
 
 app.use('*', (req, res) => {
     res.status(404).json({
@@ -104,6 +113,9 @@ app.listen(PORT, () => {
     console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`🔗 API: http://localhost:${PORT}`);
     console.log(`💚 Health: http://localhost:${PORT}/health\n`);
+    
+    // Initialize scheduled tasks
+    initializeScheduler();
 });
 
 process.on('unhandledRejection', (err) => {

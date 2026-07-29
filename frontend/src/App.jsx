@@ -8,6 +8,8 @@ import Dashboard from './pages/Dashboard';
 import AddExpense from './pages/AddExpense';
 import Budgets from './pages/Budgets';
 import AIInsights from './pages/AIInsights';
+import ExpenseHistory from './pages/ExpenseHistory';
+import Settings from './pages/Settings';
 
 function App() {
   return (
@@ -23,6 +25,15 @@ function App() {
             element={
               <ProtectedRoute>
                 <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/expenses"
+            element={
+              <ProtectedRoute>
+                <ExpenseHistory />
               </ProtectedRoute>
             }
           />
@@ -53,7 +64,15 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route path="/expenses" element={<Navigate to="/expenses/new" replace />} />
+
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <Settings />
+              </ProtectedRoute>
+            }
+          />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

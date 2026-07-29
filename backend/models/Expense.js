@@ -39,6 +39,23 @@ const expenseSchema = new mongoose.Schema({
         default: Date.now,
         index: true
     },
+    type: {
+        type: String,
+        enum: ['Expense', 'Income'],
+        default: 'Expense'
+    },
+    merchant: {
+        type: String,
+        default: ''
+    },
+    gst: {
+        type: String,
+        default: ''
+    },
+    receiptUrl: {
+        type: String,
+        default: ''
+    },
     createdAt: {
         type: Date,
         default: Date.now

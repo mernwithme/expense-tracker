@@ -1,29 +1,60 @@
-
-import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import expenseService from '../services/expenseService';
 import Footer from '../components/Common/Footer';
+import ReceiptScanModal from '../components/ReceiptScanModal';
+import VoiceEntryModal from '../components/VoiceEntryModal';
 
 const CATEGORIES = ['Food', 'Travel', 'Rent', 'Shopping', 'Entertainment', 'Healthcare', 'Bills', 'Education', 'Others'];
 
 const AddExpense = () => {
     const navigate = useNavigate();
+    const location = useLocation();
     const { user, logout } = useAuth();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+
+    const [isOcrOpen, setIsOcrOpen] = useState(false);
+    const [isVoiceOpen, setIsVoiceOpen] = useState(false);
+
+    const prefill = location.state?.prefill;
+
     const [formData, setFormData] = useState({
-        amount: '',
-        category: 'Food',
-        description: '',
-        date: new Date().toISOString().split('T')[0]
+        amount: prefill?.amount || '',
+        category: prefill?.category || 'Food',
+        description: prefill?.description || prefill?.merchantName || '',
+        date: prefill?.date || new Date().toISOString().split('T')[0]
     });
+
+    useEffect(() => {
+        if (location.state?.prefill) {
+            const p = location.state.prefill;
+            setFormData({
+                amount: p.amount || '',
+                category: CATEGORIES.includes(p.category) ? p.category : 'Others',
+                description: p.description || p.merchantName || '',
+                date: p.date || new Date().toISOString().split('T')[0]
+            });
+            setSuccess('Form auto-filled from scan/voice entry! Please review and save.');
+        }
+    }, [location.state]);
 
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
         setError('');
         setSuccess('');
+    };
+
+    const handleAutoFill = (data) => {
+        setFormData({
+            amount: data.amount || '',
+            category: CATEGORIES.includes(data.category) ? data.category : 'Others',
+            description: data.description || data.merchantName || '',
+            date: data.date || new Date().toISOString().split('T')[0]
+        });
+        setSuccess('Form auto-filled! Please review and save.');
     };
 
     const handleSubmit = async (e) => {
@@ -55,12 +86,11 @@ const AddExpense = () => {
 
     return (
         <div className="min-vh-100 bg-gradient-light d-flex flex-column">
-            
             <header className="bg-white shadow-sm">
                 <div className="container-fluid px-3 px-sm-5 px-lg-8 py-3">
                     <div className="d-flex justify-content-between align-items-center flex-wrap gap-3">
                         <div>
-                            <h1 className="fs-2 fw-bold text-gray-900 mb-0">ExpenseIQ</h1>
+                            <h1 className="fs-2 fw-bold text-gray-900 mb-0">ExpenseIQ Pro</h1>
                             <p className="small text-gray-600 mb-0">Welcome, {user?.name}!</p>
                         </div>
                         <div className="d-flex gap-3">
@@ -83,7 +113,27 @@ const AddExpense = () => {
 
             <main className="container px-3 px-sm-5 py-4 flex-grow-1" style={{ maxWidth: '48rem' }}>
                 <div className="bg-white rounded-3 shadow p-4 p-md-5">
-                    <h2 className="fs-3 fw-bold text-gray-900 mb-4">Add New Expense</h2>
+                    <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+                        <h2 className="fs-3 fw-bold text-gray-900 mb-0">Add New Expense</h2>
+
+                        {/* Quick Auto-Fill Buttons */}
+                        <div className="d-flex gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setIsVoiceOpen(true)}
+                                className="btn btn-outline-success btn-sm d-flex align-items-center gap-1"
+                            >
+                                🎤 Voice Entry
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setIsOcrOpen(true)}
+                                className="btn btn-outline-primary btn-sm d-flex align-items-center gap-1"
+                            >
+                                📷 Scan Receipt
+                            </button>
+                        </div>
+                    </div>
 
                     {error && (
                         <div className="alert alert-danger border border-danger mb-4" role="alert">
@@ -188,7 +238,18 @@ const AddExpense = () => {
                 </div>
             </main>
 
-            {/* Footer */}
+            <ReceiptScanModal
+                isOpen={isOcrOpen}
+                onClose={() => setIsOcrOpen(false)}
+                onApplyData={handleAutoFill}
+            />
+
+            <VoiceEntryModal
+                isOpen={isVoiceOpen}
+                onClose={() => setIsVoiceOpen(false)}
+                onApplyData={handleAutoFill}
+            />
+
             <Footer />
         </div>
     );
