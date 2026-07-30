@@ -8,8 +8,12 @@ let transporterInstance = null;
  */
 const getTransporter = () => {
     if (!transporterInstance) {
-        const port = parseInt(process.env.SMTP_PORT) || 587;
-        const isSecure = port === 465;
+        // Default to Port 465 (SSL/TLS) for Gmail if process.env.SMTP_PORT is not set.
+        // Cloud hosting (Render/AWS) frequently blocks outbound TCP port 587.
+        const port = parseInt(process.env.SMTP_PORT) || 465;
+        const isSecure = process.env.SMTP_SECURE !== undefined 
+            ? process.env.SMTP_SECURE === 'true' 
+            : (port === 465);
 
         transporterInstance = nodemailer.createTransport({
             pool: true,
@@ -43,6 +47,10 @@ const getTransporter = () => {
  * Verify transporter connection on startup (pre-warms SMTP socket pool)
  */
 export const verifyTransporter = async () => {
+    if (process.env.RESEND_API_KEY) {
+        console.log('✅ Resend API key detected — using HTTPS API for email delivery (Render compatible)');
+        return true;
+    }
     try {
         console.time('⚡ SMTP_Transporter_Verification');
         const transporter = getTransporter();
@@ -52,6 +60,7 @@ export const verifyTransporter = async () => {
         return true;
     } catch (error) {
         console.error('⚠️ SMTP Transporter verification failed:', error.message);
+        console.warn('💡 Tip for Render: Port 587 is blocked by Render firewall. Port 465 or RESEND_API_KEY is recommended.');
         return false;
     }
 };
@@ -147,8 +156,41 @@ const generateOtpEmailHtml = (name, otp) => {
  * Send OTP verification email
  */
 export const sendOtpEmail = async (email, name, otp) => {
-    const timerKey = `⏱️ SMTP_SendOtpEmail_${email}_${Date.now()}`;
+    const timerKey = `⏱️ SendOtpEmail_${email}_${Date.now()}`;
     console.time(timerKey);
+
+    // 1. Resend HTTPS API Mode (Guaranteed to work on Render, no SMTP port blocks)
+    if (process.env.RESEND_API_KEY) {
+        try {
+            const response = await fetch('https://api.resend.com/emails', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${process.env.RESEND_API_KEY}`
+                },
+                body: JSON.stringify({
+                    from: process.env.SMTP_FROM || 'ExpenseIQ <onboarding@resend.dev>',
+                    to: [email],
+                    subject: 'Verify Your ExpenseIQ Account',
+                    html: generateOtpEmailHtml(name, otp)
+                })
+            });
+            const data = await response.json();
+            console.timeEnd(timerKey);
+            if (!response.ok) {
+                console.error('❌ Resend API error:', data);
+                throw new Error(data.message || 'Resend email delivery failed.');
+            }
+            console.log('✅ OTP email sent via Resend API:', data.id);
+            return { success: true, messageId: data.id };
+        } catch (err) {
+            console.timeEnd(timerKey);
+            console.error('❌ Failed to send OTP email via Resend:', err.message);
+            throw new Error('Failed to send verification email. Please try again later.');
+        }
+    }
+
+    // 2. Nodemailer SMTP Mode
     try {
         const transporter = getTransporter();
 
@@ -161,7 +203,7 @@ export const sendOtpEmail = async (email, name, otp) => {
 
         const info = await transporter.sendMail(mailOptions);
         console.timeEnd(timerKey);
-        console.log('✅ OTP email sent successfully:', info.messageId);
+        console.log('✅ OTP email sent successfully via SMTP:', info.messageId);
         return { success: true, messageId: info.messageId };
     } catch (error) {
         console.timeEnd(timerKey);
