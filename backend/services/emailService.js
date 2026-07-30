@@ -47,6 +47,14 @@ const getTransporter = () => {
  * Verify transporter connection on startup (pre-warms SMTP socket pool)
  */
 export const verifyTransporter = async () => {
+    console.log('📧 Email Configuration Audit:');
+    console.log('  SMTP_HOST:', process.env.SMTP_HOST || 'smtp.gmail.com (default)');
+    console.log('  SMTP_PORT:', process.env.SMTP_PORT || '465 (default SSL/TLS)');
+    console.log('  SMTP_USER:', process.env.SMTP_USER || '(Not set)');
+    console.log('  SMTP_PASS:', process.env.SMTP_PASS ? '******** (Set)' : '(Not set)');
+    console.log('  SMTP_FROM:', process.env.SMTP_FROM || '(Not set)');
+    console.log('  RESEND_API_KEY:', process.env.RESEND_API_KEY ? 're_******** (Set)' : '(Not set)');
+
     if (process.env.RESEND_API_KEY) {
         console.log('✅ Resend API key detected — using HTTPS API for email delivery (Render compatible)');
         return true;
@@ -203,7 +211,11 @@ export const sendOtpEmail = async (email, name, otp) => {
 
         const info = await transporter.sendMail(mailOptions);
         console.timeEnd(timerKey);
-        console.log('✅ OTP email sent successfully via SMTP:', info.messageId);
+        console.log('✅ OTP email sent successfully via SMTP');
+        console.log('  Message ID:', info.messageId);
+        console.log('  Accepted:', info.accepted);
+        console.log('  Rejected:', info.rejected);
+        console.log('  Server Response:', info.response);
         return { success: true, messageId: info.messageId };
     } catch (error) {
         console.timeEnd(timerKey);
