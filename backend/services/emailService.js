@@ -23,9 +23,10 @@ const getTransporter = () => {
                 user: process.env.SMTP_USER,
                 pass: process.env.SMTP_PASS
             },
-            connectionTimeout: 10000, // 10s TCP timeout
-            greetingTimeout: 5000,    // 5s SMTP greeting timeout
-            socketTimeout: 15000,     // 15s socket timeout
+            family: 4, // Force IPv4 to prevent IPv6 ENETUNREACH issues on cloud providers like Render
+            connectionTimeout: 15000, // 15s TCP timeout
+            greetingTimeout: 10000,   // 10s SMTP greeting timeout
+            socketTimeout: 20000,     // 20s socket timeout
             keepAlive: true
         });
     }
