@@ -140,6 +140,13 @@ export const resendOtp = async (req, res) => {
     console.time(totalTimer);
     try {
         const { email, name } = req.body;
+        if (!email) {
+            console.timeEnd(totalTimer);
+            return res.status(400).json({
+                success: false,
+                message: 'Email address is required.'
+            });
+        }
         const normalizedEmail = email.toLowerCase();
 
         console.time('⏱️ DB_ResendUserCheck');
@@ -154,13 +161,35 @@ export const resendOtp = async (req, res) => {
             });
         }
 
-        const otpRecord = await Otp.findOne({ email: normalizedEmail });
+        let otpRecord = await Otp.findOne({ email: normalizedEmail });
 
         if (!otpRecord) {
+            // Create a fresh OTP record if expired or not found
+            const newOtp = generateOtp();
+            otpRecord = new Otp({
+                email: normalizedEmail,
+                otp: newOtp,
+                expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5 minutes
+                verified: false,
+                attempts: 1,
+                lastSentAt: new Date()
+            });
+
+            console.time('⏱️ DB_ResendOtpSave');
+            await otpRecord.save();
+            console.timeEnd('⏱️ DB_ResendOtpSave');
+
+            console.log(`📧 Fresh OTP created & sent for ${normalizedEmail}: ${newOtp}`);
+
+            sendOtpEmail(normalizedEmail, name || '', newOtp).catch(err => {
+                console.error(`❌ Background resend OTP email error for ${normalizedEmail}:`, err.message);
+            });
+
             console.timeEnd(totalTimer);
-            return res.status(400).json({
-                success: false,
-                message: 'No verification request found. Please start the registration process again.'
+            return res.status(200).json({
+                success: true,
+                message: 'New verification code sent to your email.',
+                remainingAttempts: 2
             });
         }
 
