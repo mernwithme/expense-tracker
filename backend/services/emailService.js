@@ -45,9 +45,9 @@ const getTransporter = () => {
                     });
                 });
             },
-            connectionTimeout: 15000, // 15s TCP timeout
-            greetingTimeout: 10000,   // 10s SMTP greeting timeout
-            socketTimeout: 20000,     // 20s socket timeout
+            connectionTimeout: 5000,  // 5s TCP timeout
+            greetingTimeout: 5000,    // 5s SMTP greeting timeout
+            socketTimeout: 5000,      // 5s socket timeout
             keepAlive: true
         });
     }
