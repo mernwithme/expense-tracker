@@ -66,6 +66,7 @@ export const verifyTransporter = async () => {
     console.log('  SMTP_FROM:', process.env.SMTP_FROM || '(Not set)');
     console.log('  RESEND_API_KEY:', process.env.RESEND_API_KEY ? 're_******** (Set)' : '(Not set)');
     console.log('  BREVO_API_KEY:', process.env.BREVO_API_KEY ? 'xkeysib-******** (Set)' : '(Not set)');
+    console.log('  SENDGRID_API_KEY:', process.env.SENDGRID_API_KEY ? 'SG.******** (Set)' : '(Not set)');
 
     if (process.env.RESEND_API_KEY) {
         console.log('✅ Resend API key detected — using HTTPS API for email delivery (Render compatible)');
@@ -75,9 +76,13 @@ export const verifyTransporter = async () => {
         console.log('✅ Brevo API key detected — using HTTPS API for email delivery (Render compatible)');
         return true;
     }
+    if (process.env.SENDGRID_API_KEY) {
+        console.log('✅ SendGrid API key detected — using HTTPS API for email delivery (Render compatible)');
+        return true;
+    }
 
     console.warn('⚠️ WARNING FOR RENDER DEPLOYMENTS: Render blocks outbound TCP ports 25, 465, and 587.');
-    console.warn('👉 To ensure 100% instant email delivery on Render, add RESEND_API_KEY or BREVO_API_KEY in Render Environment Variables.');
+    console.warn('👉 To ensure 100% instant email delivery on Render, add RESEND_API_KEY, BREVO_API_KEY, or SENDGRID_API_KEY in Render Environment Variables.');
 
     try {
         console.time('⚡ SMTP_Transporter_Verification');
