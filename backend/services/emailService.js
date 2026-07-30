@@ -4,6 +4,35 @@ import dns from 'dns';
 let transporterInstance = null;
 
 /**
+ * Robust Environment Variable Sanitizer
+ * Automatically strips accidental 'KEY=val' prefixes, quotes, and whitespace
+ * that occur when setting environment variables on Render, Vercel, or Docker.
+ */
+export const getCleanEnv = (key, fallback = '') => {
+    let val = process.env[key];
+    if (!val) return fallback;
+    val = val.trim();
+    // Strip outer quotes if present: "value" or 'value'
+    val = val.replace(/^["']|["']$/g, '');
+    // If user mistakenly pasted "KEY=value" into the Value field in Render Dashboard
+    if (val.toUpperCase().startsWith(`${key.toUpperCase()}=`)) {
+        val = val.substring(key.length + 1).trim();
+    }
+    // Strip outer quotes again if present inside KEY=
+    val = val.replace(/^["']|["']$/g, '');
+    return val || fallback;
+};
+
+/**
+ * Mask sensitive credentials for safe logging
+ */
+const maskKey = (keyStr) => {
+    if (!keyStr) return '(Not configured)';
+    if (keyStr.length <= 8) return '********';
+    return `${keyStr.substring(0, 5)}...${keyStr.substring(keyStr.length - 4)}`;
+};
+
+/**
  * Helper: Fetch with timeout via AbortController
  */
 const fetchWithTimeout = async (url, options = {}, timeoutMs = 10000) => {
@@ -50,10 +79,17 @@ const executeWithRetry = async (fn, maxRetries = 2, initialDelayMs = 1000) => {
  */
 const getTransporter = () => {
     if (!transporterInstance) {
-        const port = parseInt(process.env.SMTP_PORT, 10) || 465;
-        const isSecure = process.env.SMTP_SECURE !== undefined 
-            ? process.env.SMTP_SECURE === 'true' 
+        const smtpHost = getCleanEnv('SMTP_HOST', 'smtp.gmail.com');
+        const smtpPortRaw = getCleanEnv('SMTP_PORT', '465');
+        const port = parseInt(smtpPortRaw, 10) || 465;
+        
+        const secureEnv = getCleanEnv('SMTP_SECURE');
+        const isSecure = secureEnv !== '' 
+            ? secureEnv === 'true' 
             : (port === 465);
+
+        const smtpUser = getCleanEnv('SMTP_USER');
+        const smtpPass = getCleanEnv('SMTP_PASS');
 
         transporterInstance = nodemailer.createTransport({
             pool: true,
@@ -61,12 +97,12 @@ const getTransporter = () => {
             maxMessages: 100,
             rateDelta: 1000,
             rateLimit: 5,
-            host: process.env.SMTP_HOST || 'smtp.gmail.com',
+            host: smtpHost,
             port: port,
             secure: isSecure,
             auth: {
-                user: process.env.SMTP_USER,
-                pass: process.env.SMTP_PASS
+                user: smtpUser,
+                pass: smtpPass
             },
             family: 4, // Force IPv4 socket
             autoSelectFamily: false, // Disable Node.js Happy Eyeballs IPv6 probing
@@ -94,32 +130,46 @@ const getTransporter = () => {
  * Audit and verify active email delivery transport on application startup
  */
 export const verifyTransporter = async () => {
-    console.log('\n📧 Email Transport Configuration Audit:');
-    console.log('  SMTP_HOST:', process.env.SMTP_HOST || 'smtp.gmail.com (default)');
-    console.log('  SMTP_PORT:', process.env.SMTP_PORT || '465 (default SSL/TLS)');
-    console.log('  SMTP_USER:', process.env.SMTP_USER || '(Not configured)');
-    console.log('  SMTP_PASS:', process.env.SMTP_PASS ? '******** (Configured)' : '(Not configured)');
-    console.log('  SMTP_FROM:', process.env.SMTP_FROM || '(Not configured)');
-    console.log('  RESEND_API_KEY:', process.env.RESEND_API_KEY ? 're_******** (Configured)' : '(Not configured)');
-    console.log('  BREVO_API_KEY:', process.env.BREVO_API_KEY ? 'xkeysib-******** (Configured)' : '(Not configured)');
-    console.log('  SENDGRID_API_KEY:', process.env.SENDGRID_API_KEY ? 'SG.******** (Configured)' : '(Not configured)');
+    const resendKey = getCleanEnv('RESEND_API_KEY');
+    const brevoKey = getCleanEnv('BREVO_API_KEY');
+    const sendgridKey = getCleanEnv('SENDGRID_API_KEY');
+    const smtpHost = getCleanEnv('SMTP_HOST', 'smtp.gmail.com');
+    const smtpPort = getCleanEnv('SMTP_PORT', '465');
+    const smtpUser = getCleanEnv('SMTP_USER');
+    const smtpFrom = getCleanEnv('SMTP_FROM', 'ExpenseIQ <onboarding@resend.dev>');
 
-    if (process.env.RESEND_API_KEY) {
-        console.log('✅ Active Provider: RESEND REST API (HTTPS Port 443 - 100% Render Compatible)\n');
+    console.log('\n📧 Email Transport Audit & Environment Sanitization:');
+    console.log('  SMTP_HOST:', smtpHost);
+    console.log('  SMTP_PORT:', smtpPort);
+    console.log('  SMTP_USER:', smtpUser || '(Not configured)');
+    console.log('  SMTP_FROM:', smtpFrom);
+    console.log('  RESEND_API_KEY:', maskKey(resendKey));
+    console.log('  BREVO_API_KEY:', maskKey(brevoKey));
+    console.log('  SENDGRID_API_KEY:', maskKey(sendgridKey));
+
+    if (resendKey) {
+        if (resendKey.includes('your_key_here') || resendKey.includes('123456789')) {
+            console.error('❌ CRITICAL ERROR: RESEND_API_KEY contains a placeholder key ("' + resendKey + '").');
+            console.error('👉 Please paste your actual API key from https://resend.com into Render Environment Variables.\n');
+            return false;
+        }
+        console.log('✅ Active Transport: RESEND REST API (HTTPS Port 443 - 100% Render Compatible)\n');
         return true;
     }
-    if (process.env.BREVO_API_KEY) {
-        console.log('✅ Active Provider: BREVO REST API (HTTPS Port 443 - 100% Render Compatible)\n');
+
+    if (brevoKey) {
+        console.log('✅ Active Transport: BREVO REST API (HTTPS Port 443 - 100% Render Compatible)\n');
         return true;
     }
-    if (process.env.SENDGRID_API_KEY) {
-        console.log('✅ Active Provider: SENDGRID REST API (HTTPS Port 443 - 100% Render Compatible)\n');
+
+    if (sendgridKey) {
+        console.log('✅ Active Transport: SENDGRID REST API (HTTPS Port 443 - 100% Render Compatible)\n');
         return true;
     }
 
     console.warn('⚠️ WARNING FOR CLOUD DEPLOYMENTS (Render, AWS EC2, Heroku):');
     console.warn('  Cloud hosts block outbound TCP ports 25, 465, and 587 to prevent spam abuse.');
-    console.warn('👉 Recommendation: Add RESEND_API_KEY or BREVO_API_KEY to Render Environment Variables.');
+    console.warn('👉 Action Required: Add RESEND_API_KEY to Render Environment Variables.');
 
     try {
         console.time('⚡ SMTP_Transporter_Verification');
@@ -130,7 +180,7 @@ export const verifyTransporter = async () => {
         return true;
     } catch (error) {
         console.error('⚠️ SMTP Transporter verification failed:', error.message);
-        console.warn('💡 Fix for Render: Set RESEND_API_KEY or BREVO_API_KEY in Render dashboard to use HTTPS API (Port 443).\n');
+        console.warn('💡 Fix for Render: Set RESEND_API_KEY in Render dashboard to use HTTPS API (Port 443).\n');
         return false;
     }
 };
@@ -229,18 +279,23 @@ export const sendOtpEmail = async (email, name, otp) => {
     const timerKey = `⏱️ SendOtpEmail_${email}_${Date.now()}`;
     console.time(timerKey);
 
-    // 1. RESEND REST API (HTTPS Port 443 - Recommended for Render)
-    if (process.env.RESEND_API_KEY) {
+    const resendKey = getCleanEnv('RESEND_API_KEY');
+    const brevoKey = getCleanEnv('BREVO_API_KEY');
+    const smtpFrom = getCleanEnv('SMTP_FROM', 'ExpenseIQ <onboarding@resend.dev>');
+    const smtpUser = getCleanEnv('SMTP_USER');
+
+    // 1. RESEND REST API (HTTPS Port 443)
+    if (resendKey) {
         try {
             const result = await executeWithRetry(async () => {
                 const response = await fetchWithTimeout('https://api.resend.com/emails', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${process.env.RESEND_API_KEY}`
+                        'Authorization': `Bearer ${resendKey}`
                     },
                     body: JSON.stringify({
-                        from: process.env.SMTP_FROM || 'ExpenseIQ <onboarding@resend.dev>',
+                        from: smtpFrom,
                         to: [email],
                         subject: 'Verify Your ExpenseIQ Account',
                         html: generateOtpEmailHtml(name, otp)
@@ -249,7 +304,8 @@ export const sendOtpEmail = async (email, name, otp) => {
 
                 const data = await response.json();
                 if (!response.ok) {
-                    throw new Error(data.message || `Resend API error (${response.status})`);
+                    console.error('❌ Resend API Error Response:', { status: response.status, data });
+                    throw new Error(data.message || data.name || `Resend API HTTP ${response.status}`);
                 }
                 return data;
             });
@@ -260,20 +316,20 @@ export const sendOtpEmail = async (email, name, otp) => {
         } catch (err) {
             console.timeEnd(timerKey);
             console.error('❌ Failed to send OTP email via Resend API:', err.message);
-            throw new Error('Failed to send verification email. Please try again later.');
+            throw new Error(`Email delivery failed via Resend API (${err.message})`);
         }
     }
 
-    // 2. BREVO REST API (HTTPS Port 443 - Recommended for Render)
-    if (process.env.BREVO_API_KEY) {
+    // 2. BREVO REST API (HTTPS Port 443)
+    if (brevoKey) {
         try {
             const result = await executeWithRetry(async () => {
-                const senderEmail = process.env.SMTP_USER || 'noreply@expenseiq.com';
+                const senderEmail = smtpUser || 'noreply@expenseiq.com';
                 const response = await fetchWithTimeout('https://api.brevo.com/v3/smtp/email', {
                     method: 'POST',
                     headers: {
                         'accept': 'application/json',
-                        'api-key': process.env.BREVO_API_KEY,
+                        'api-key': brevoKey,
                         'content-type': 'application/json'
                     },
                     body: JSON.stringify({
@@ -289,7 +345,8 @@ export const sendOtpEmail = async (email, name, otp) => {
 
                 const data = await response.json();
                 if (!response.ok) {
-                    throw new Error(data.message || `Brevo API error (${response.status})`);
+                    console.error('❌ Brevo API Error Response:', { status: response.status, data });
+                    throw new Error(data.message || `Brevo API HTTP ${response.status}`);
                 }
                 return data;
             });
@@ -300,7 +357,7 @@ export const sendOtpEmail = async (email, name, otp) => {
         } catch (err) {
             console.timeEnd(timerKey);
             console.error('❌ Failed to send OTP email via Brevo API:', err.message);
-            throw new Error('Failed to send verification email. Please try again later.');
+            throw new Error(`Email delivery failed via Brevo API (${err.message})`);
         }
     }
 
@@ -308,7 +365,7 @@ export const sendOtpEmail = async (email, name, otp) => {
     try {
         const transporter = getTransporter();
         const mailOptions = {
-            from: process.env.SMTP_FROM || `"ExpenseIQ" <${process.env.SMTP_USER}>`,
+            from: smtpFrom || `"ExpenseIQ" <${smtpUser}>`,
             to: email,
             subject: 'Verify Your ExpenseIQ Account',
             html: generateOtpEmailHtml(name, otp)
@@ -326,7 +383,7 @@ export const sendOtpEmail = async (email, name, otp) => {
         console.log('\n================================================================');
         console.log(`🔑 [QA TEST MODE] Verification Code for ${email}: ${otp}`);
         console.log('💡 Render Firewall blocked outbound SMTP TCP port.');
-        console.log('👉 Add RESEND_API_KEY or BREVO_API_KEY in Render Environment Variables for live inbox delivery.');
+        console.log('👉 Add RESEND_API_KEY in Render Environment Variables for live inbox delivery.');
         console.log('================================================================\n');
 
         return { success: true, isTestFallback: true, otp, provider: 'qa_fallback' };
@@ -339,6 +396,11 @@ export const sendOtpEmail = async (email, name, otp) => {
 export const sendMonthlyStatementEmail = async (email, name, month, year, pdfBuffer) => {
     const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
     const monthName = monthNames[month - 1];
+
+    const resendKey = getCleanEnv('RESEND_API_KEY');
+    const brevoKey = getCleanEnv('BREVO_API_KEY');
+    const smtpFrom = getCleanEnv('SMTP_FROM', 'ExpenseIQ <onboarding@resend.dev>');
+    const smtpUser = getCleanEnv('SMTP_USER');
 
     const html = `
     <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 8px;">
@@ -356,17 +418,17 @@ export const sendMonthlyStatementEmail = async (email, name, month, year, pdfBuf
     `;
 
     // 1. RESEND REST API
-    if (process.env.RESEND_API_KEY) {
+    if (resendKey) {
         try {
             const result = await executeWithRetry(async () => {
                 const response = await fetchWithTimeout('https://api.resend.com/emails', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${process.env.RESEND_API_KEY}`
+                        'Authorization': `Bearer ${resendKey}`
                     },
                     body: JSON.stringify({
-                        from: process.env.SMTP_FROM || 'ExpenseIQ <onboarding@resend.dev>',
+                        from: smtpFrom,
                         to: [email],
                         subject: `ExpenseIQ Monthly Financial Statement – ${monthName} ${year}`,
                         html: html,
@@ -381,7 +443,8 @@ export const sendMonthlyStatementEmail = async (email, name, month, year, pdfBuf
 
                 const data = await response.json();
                 if (!response.ok) {
-                    throw new Error(data.message || `Resend API error (${response.status})`);
+                    console.error('❌ Resend API Statement Error:', { status: response.status, data });
+                    throw new Error(data.message || `Resend API HTTP ${response.status}`);
                 }
                 return data;
             });
@@ -390,25 +453,25 @@ export const sendMonthlyStatementEmail = async (email, name, month, year, pdfBuf
             return { success: true, messageId: result.id, provider: 'resend' };
         } catch (err) {
             console.error(`❌ Failed to send statement email to ${email} via Resend:`, err.message);
-            throw new Error('Failed to send monthly statement email via Resend.');
+            throw new Error(`Failed to send monthly statement email via Resend (${err.message})`);
         }
     }
 
     // 2. BREVO REST API
-    if (process.env.BREVO_API_KEY) {
+    if (brevoKey) {
         try {
             const result = await executeWithRetry(async () => {
                 const response = await fetchWithTimeout('https://api.brevo.com/v3/smtp/email', {
                     method: 'POST',
                     headers: {
                         'accept': 'application/json',
-                        'api-key': process.env.BREVO_API_KEY,
+                        'api-key': brevoKey,
                         'content-type': 'application/json'
                     },
                     body: JSON.stringify({
                         sender: {
                             name: 'ExpenseIQ',
-                            email: process.env.SMTP_USER || 'noreply@expenseiq.com'
+                            email: smtpUser || 'noreply@expenseiq.com'
                         },
                         to: [{ email: email, name: name || 'User' }],
                         subject: `ExpenseIQ Monthly Financial Statement – ${monthName} ${year}`,
@@ -424,7 +487,8 @@ export const sendMonthlyStatementEmail = async (email, name, month, year, pdfBuf
 
                 const data = await response.json();
                 if (!response.ok) {
-                    throw new Error(data.message || `Brevo API error (${response.status})`);
+                    console.error('❌ Brevo API Statement Error:', { status: response.status, data });
+                    throw new Error(data.message || `Brevo API HTTP ${response.status}`);
                 }
                 return data;
             });
@@ -433,15 +497,15 @@ export const sendMonthlyStatementEmail = async (email, name, month, year, pdfBuf
             return { success: true, messageId: result.messageId, provider: 'brevo' };
         } catch (err) {
             console.error(`❌ Failed to send statement email to ${email} via Brevo:`, err.message);
-            throw new Error('Failed to send monthly statement email via Brevo.');
+            throw new Error(`Failed to send monthly statement email via Brevo (${err.message})`);
         }
     }
 
     // 3. NODEMAILER SMTP FALLBACK WITH RETRIES
-    return await executeWithRetry(async (attempt) => {
+    return await executeWithRetry(async () => {
         const transporter = getTransporter();
         const mailOptions = {
-            from: process.env.SMTP_FROM || `"ExpenseIQ" <${process.env.SMTP_USER}>`,
+            from: smtpFrom || `"ExpenseIQ" <${smtpUser}>`,
             to: email,
             subject: `ExpenseIQ Monthly Financial Statement – ${monthName} ${year}`,
             html: html,
@@ -463,5 +527,6 @@ export const sendMonthlyStatementEmail = async (email, name, month, year, pdfBuf
 export default {
     sendOtpEmail,
     sendMonthlyStatementEmail,
-    verifyTransporter
+    verifyTransporter,
+    getCleanEnv
 };
