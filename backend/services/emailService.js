@@ -31,8 +31,19 @@ const getTransporter = () => {
             family: 4, // Force IPv4
             autoSelectFamily: false, // Disable Node.js Happy Eyeballs IPv6 probing
             lookup: (hostname, options, callback) => {
-                // Explicitly query IPv4 (AF_INET) records only
-                dns.lookup(hostname, { family: 4 }, callback);
+                // Bypass glibc/getaddrinfo dual-stack IPv6 lookup.
+                // Force direct DNS A-record query for pure IPv4 resolution.
+                dns.resolve4(hostname, (err, addresses) => {
+                    if (!err && addresses && addresses.length > 0) {
+                        // Return a resolved IPv4 address string to force AF_INET socket
+                        const ip = addresses[Math.floor(Math.random() * addresses.length)];
+                        return callback(null, ip, 4);
+                    }
+                    // Fallback to standard lookup forced to family 4
+                    dns.lookup(hostname, { family: 4 }, (lookupErr, address) => {
+                        callback(lookupErr, address, 4);
+                    });
+                });
             },
             connectionTimeout: 15000, // 15s TCP timeout
             greetingTimeout: 10000,   // 10s SMTP greeting timeout
