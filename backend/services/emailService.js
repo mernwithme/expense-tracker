@@ -220,24 +220,59 @@ export const sendMonthlyStatementEmail = async (email, name, month, year, pdfBuf
     const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
     const monthName = monthNames[month - 1];
 
+    const html = `
+    <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 8px;">
+        <h2 style="color: #4f46e5;">ExpenseIQ Monthly Financial Statement</h2>
+        <p>Hello ${name},</p>
+        <p>Your monthly financial statement for <strong>${monthName} ${year}</strong> is ready.</p>
+        <p>We've attached your professional PDF report containing your charts, analytics, AI-generated insights, category-wise spending, and transaction summaries.</p>
+        <p>Thank you for using ExpenseIQ to manage your finances!</p>
+        <br/>
+        <p style="font-size: 12px; color: #777;">
+            The ExpenseIQ Team<br/>
+            <em>You are receiving this because you enabled Email Reports in your Settings.</em>
+        </p>
+    </div>
+    `;
+
+    // 1. Resend HTTPS API Mode (Guaranteed to work on Render, no SMTP port blocks)
+    if (process.env.RESEND_API_KEY) {
+        try {
+            const response = await fetch('https://api.resend.com/emails', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${process.env.RESEND_API_KEY}`
+                },
+                body: JSON.stringify({
+                    from: process.env.SMTP_FROM || 'ExpenseIQ <onboarding@resend.dev>',
+                    to: [email],
+                    subject: `ExpenseIQ Monthly Financial Statement – ${monthName} ${year}`,
+                    html: html,
+                    attachments: [
+                        {
+                            filename: `ExpenseIQ_Statement_${monthName}_${year}.pdf`,
+                            content: pdfBuffer.toString('base64')
+                        }
+                    ]
+                })
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.message || 'Resend email delivery failed.');
+            }
+            console.log(`✅ Monthly statement email sent to ${email} via Resend API:`, data.id);
+            return { success: true, messageId: data.id };
+        } catch (err) {
+            console.error(`❌ Failed to send statement email to ${email} via Resend:`, err.message);
+            throw new Error('Failed to send monthly statement email via Resend.');
+        }
+    }
+
+    // 2. Nodemailer SMTP Mode
     while (retries > 0) {
         try {
             const transporter = getTransporter();
-
-            const html = `
-            <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 8px;">
-                <h2 style="color: #4f46e5;">ExpenseIQ Monthly Financial Statement</h2>
-                <p>Hello ${name},</p>
-                <p>Your monthly financial statement for <strong>${monthName} ${year}</strong> is ready.</p>
-                <p>We've attached your professional PDF report containing your charts, analytics, AI-generated insights, category-wise spending, and transaction summaries.</p>
-                <p>Thank you for using ExpenseIQ to manage your finances!</p>
-                <br/>
-                <p style="font-size: 12px; color: #777;">
-                    The ExpenseIQ Team<br/>
-                    <em>You are receiving this because you enabled Email Reports in your Settings.</em>
-                </p>
-            </div>
-            `;
 
             const mailOptions = {
                 from: process.env.SMTP_FROM || `"ExpenseIQ" <${process.env.SMTP_USER}>`,
