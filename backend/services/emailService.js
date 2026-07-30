@@ -65,11 +65,20 @@ export const verifyTransporter = async () => {
     console.log('  SMTP_PASS:', process.env.SMTP_PASS ? '******** (Set)' : '(Not set)');
     console.log('  SMTP_FROM:', process.env.SMTP_FROM || '(Not set)');
     console.log('  RESEND_API_KEY:', process.env.RESEND_API_KEY ? 're_******** (Set)' : '(Not set)');
+    console.log('  BREVO_API_KEY:', process.env.BREVO_API_KEY ? 'xkeysib-******** (Set)' : '(Not set)');
 
     if (process.env.RESEND_API_KEY) {
         console.log('✅ Resend API key detected — using HTTPS API for email delivery (Render compatible)');
         return true;
     }
+    if (process.env.BREVO_API_KEY) {
+        console.log('✅ Brevo API key detected — using HTTPS API for email delivery (Render compatible)');
+        return true;
+    }
+
+    console.warn('⚠️ WARNING FOR RENDER DEPLOYMENTS: Render blocks outbound TCP ports 25, 465, and 587.');
+    console.warn('👉 To ensure 100% instant email delivery on Render, add RESEND_API_KEY or BREVO_API_KEY in Render Environment Variables.');
+
     try {
         console.time('⚡ SMTP_Transporter_Verification');
         const transporter = getTransporter();
@@ -79,7 +88,7 @@ export const verifyTransporter = async () => {
         return true;
     } catch (error) {
         console.error('⚠️ SMTP Transporter verification failed:', error.message);
-        console.warn('💡 Tip for Render: Port 587 is blocked by Render firewall. Port 465 or RESEND_API_KEY is recommended.');
+        console.warn('💡 Tip for Render: Set RESEND_API_KEY or BREVO_API_KEY in Render Environment Variables to use HTTPS API (port 443).');
         return false;
     }
 };
@@ -178,7 +187,7 @@ export const sendOtpEmail = async (email, name, otp) => {
     const timerKey = `⏱️ SendOtpEmail_${email}_${Date.now()}`;
     console.time(timerKey);
 
-    // 1. Resend HTTPS API Mode (Guaranteed to work on Render, no SMTP port blocks)
+    // 1. Resend HTTPS API Mode (Guaranteed on Render, Port 443)
     if (process.env.RESEND_API_KEY) {
         try {
             const response = await fetch('https://api.resend.com/emails', {
@@ -205,6 +214,41 @@ export const sendOtpEmail = async (email, name, otp) => {
         } catch (err) {
             console.timeEnd(timerKey);
             console.error('❌ Failed to send OTP email via Resend:', err.message);
+            throw new Error('Failed to send verification email. Please try again later.');
+        }
+    }
+
+    // 2. Brevo (Sendinblue) HTTPS API Mode (Guaranteed on Render, Port 443)
+    if (process.env.BREVO_API_KEY) {
+        try {
+            const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+                method: 'POST',
+                headers: {
+                    'accept': 'application/json',
+                    'api-key': process.env.BREVO_API_KEY,
+                    'content-type': 'application/json'
+                },
+                body: JSON.stringify({
+                    sender: {
+                        name: 'ExpenseIQ',
+                        email: process.env.SMTP_USER || 'noreply@expenseiq.com'
+                    },
+                    to: [{ email: email, name: name || 'User' }],
+                    subject: 'Verify Your ExpenseIQ Account',
+                    htmlContent: generateOtpEmailHtml(name, otp)
+                })
+            });
+            const data = await response.json();
+            console.timeEnd(timerKey);
+            if (!response.ok) {
+                console.error('❌ Brevo API error:', data);
+                throw new Error(data.message || 'Brevo email delivery failed.');
+            }
+            console.log('✅ OTP email sent via Brevo API:', data.messageId);
+            return { success: true, messageId: data.messageId };
+        } catch (err) {
+            console.timeEnd(timerKey);
+            console.error('❌ Failed to send OTP email via Brevo:', err.message);
             throw new Error('Failed to send verification email. Please try again later.');
         }
     }
@@ -292,7 +336,43 @@ export const sendMonthlyStatementEmail = async (email, name, month, year, pdfBuf
         }
     }
 
-    // 2. Nodemailer SMTP Mode
+    // 2. Brevo HTTPS API Mode (Guaranteed to work on Render, no SMTP port blocks)
+    if (process.env.BREVO_API_KEY) {
+        try {
+            const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+                method: 'POST',
+                headers: {
+                    'accept': 'application/json',
+                    'api-key': process.env.BREVO_API_KEY,
+                    'content-type': 'application/json'
+                },
+                body: JSON.stringify({
+                    sender: {
+                        name: 'ExpenseIQ',
+                        email: process.env.SMTP_USER || 'noreply@expenseiq.com'
+                    },
+                    to: [{ email: email, name: name || 'User' }],
+                    subject: `ExpenseIQ Monthly Financial Statement – ${monthName} ${year}`,
+                    htmlContent: html,
+                    attachment: [
+                        {
+                            content: pdfBuffer.toString('base64'),
+                            name: `ExpenseIQ_Statement_${monthName}_${year}.pdf`
+                        }
+                    ]
+                })
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.message || 'Brevo email delivery failed.');
+            }
+            console.log(`✅ Monthly statement email sent to ${email} via Brevo API:`, data.messageId);
+            return { success: true, messageId: data.messageId };
+        } catch (err) {
+            console.error(`❌ Failed to send statement email to ${email} via Brevo:`, err.message);
+            throw new Error('Failed to send monthly statement email via Brevo.');
+        }
+    }
     while (retries > 0) {
         try {
             const transporter = getTransporter();
