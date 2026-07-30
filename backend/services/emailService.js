@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import dns from 'dns';
 
 let transporterInstance = null;
 
@@ -23,7 +24,12 @@ const getTransporter = () => {
                 user: process.env.SMTP_USER,
                 pass: process.env.SMTP_PASS
             },
-            family: 4, // Force IPv4 to prevent IPv6 ENETUNREACH issues on cloud providers like Render
+            family: 4, // Force IPv4
+            autoSelectFamily: false, // Disable Node.js Happy Eyeballs IPv6 probing
+            lookup: (hostname, options, callback) => {
+                // Explicitly query IPv4 (AF_INET) records only
+                dns.lookup(hostname, { family: 4 }, callback);
+            },
             connectionTimeout: 15000, // 15s TCP timeout
             greetingTimeout: 10000,   // 10s SMTP greeting timeout
             socketTimeout: 20000,     // 20s socket timeout
